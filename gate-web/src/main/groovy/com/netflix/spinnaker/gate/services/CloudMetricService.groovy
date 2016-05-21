@@ -1,11 +1,11 @@
 /*
- * Copyright 2015 Google, Inc.
+ * Copyright 2016 Netflix, Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,6 @@
 
 package com.netflix.spinnaker.gate.services
 
-import com.netflix.hystrix.HystrixCommand
 import com.netflix.spinnaker.gate.services.commands.HystrixFactory
 import com.netflix.spinnaker.gate.services.internal.ClouddriverService
 import groovy.transform.CompileStatic
@@ -25,26 +24,23 @@ import org.springframework.stereotype.Component
 
 @CompileStatic
 @Component
-class NetworkService {
+class CloudMetricService {
 
-  private static final String GROUP = "networks"
+  private static final String GROUP = "cloudMetrics"
 
   @Autowired
   ClouddriverService clouddriverService
 
-  private static <T extends List> HystrixCommand<T> command(String type, Closure<T> work) {
-    (HystrixCommand<T>)HystrixFactory.newListCommand(GROUP, type, work)
-  }
-
-  Map getNetworks() {
-    command("networks") {
-      clouddriverService.getNetworks()
+  List<Map> findAll(String cloudProvider, String account, String region, Map<String, String> filters) {
+    HystrixFactory.newListCommand(GROUP, "$GROUP:$account:$region:findAll") {
+      clouddriverService.findAllCloudMetrics(cloudProvider, account, region, filters)
     } execute()
   }
 
-  List<Map> getNetworks(String cloudProvider) {
-    command("networks-$cloudProvider") {
-      clouddriverService.getNetworks(cloudProvider)
+  Map getStatistics(String cloudProvider, String account, String region, String metricName,
+                    Long startTime, Long endTime, Map<String, String> filters) {
+    HystrixFactory.newMapCommand(GROUP, "$GROUP:$account:$region:getStatistics") {
+      clouddriverService.getCloudMetricStatistics(cloudProvider, account, region, metricName, startTime, endTime, filters)
     } execute()
   }
 }

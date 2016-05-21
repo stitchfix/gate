@@ -21,6 +21,7 @@ import retrofit.http.GET
 import retrofit.http.Headers
 import retrofit.http.Path
 import retrofit.http.Query
+import retrofit.http.QueryMap
 
 interface ClouddriverService {
 
@@ -104,6 +105,17 @@ interface ClouddriverService {
   List getServerGroups(@Path("name") String name, @Query("expand") String expand)
 
   @Headers("Accept: application/json")
+  @GET("/applications/{name}/jobs")
+  List getJobs(@Path("name") String name, @Query("expand") String expand)
+
+  @Headers("Accept: application/json")
+  @GET("/applications/{name}/jobs/{account}/{region}/{jobName}")
+  Map getJobDetails(@Path("name") String name,
+                    @Path("account") String account,
+                    @Path("region") String region,
+                    @Path("jobName") String jobName)
+
+  @Headers("Accept: application/json")
   @GET("/applications/{name}/serverGroups/{account}/{region}/{serverGroupName}")
   Map getServerGroupDetails(@Path("name") String appName,
                             @Path("account") String account,
@@ -166,6 +178,10 @@ interface ClouddriverService {
   List<Map> getReservationReports()
 
   @Headers("Accept: application/json")
+  @GET("/reports/reservation/{name}")
+  List<Map> getReservationReports(@Path("name") String name)
+
+  @Headers("Accept: application/json")
   @GET("/{provider}/images/find")
   List<Map> findImages(@Path("provider") String provider,
                        @Query("q") String query,
@@ -199,9 +215,27 @@ interface ClouddriverService {
   @GET('/subnets')
   List<Map> getSubnets()
 
+  @GET('/subnets/{cloudProvider}')
+  List<Map> getSubnets(@Path("cloudProvider") String cloudProvider)
+
   @GET('/networks')
   Map getNetworks()
 
   @GET('/networks/{cloudProvider}')
   List<Map> getNetworks(@Path("cloudProvider") String cloudProvider)
+
+  @GET('/cloudMetrics/{cloudProvider}/{account}/{region}')
+  List<Map> findAllCloudMetrics(@Path("cloudProvider") String cloudProvider,
+                    @Path("account") String account,
+                    @Path("region") String region,
+                    @QueryMap Map<String, String> filters)
+
+  @GET('/cloudMetrics/{cloudProvider}/{account}/{region}/{metricName}/statistics')
+  Map getCloudMetricStatistics(@Path("cloudProvider") String cloudProvider,
+                               @Path("account") String account,
+                               @Path("region") String region,
+                               @Path("metricName") String metricName,
+                               @Query("startTime") Long startTime,
+                               @Query("endTime") Long endTime,
+                               @QueryMap Map<String, String> filters)
 }

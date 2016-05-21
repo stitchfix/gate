@@ -16,6 +16,9 @@
 
 package com.netflix.spinnaker.gate.config
 
+import org.springframework.session.data.redis.config.ConfigureRedisAction
+import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession
+
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import javax.servlet.*
@@ -23,7 +26,6 @@ import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 import com.netflix.hystrix.strategy.concurrency.HystrixRequestContext
 import com.netflix.spectator.api.Registry
-import com.netflix.spinnaker.config.OkHttpClientConfiguration
 import com.netflix.spinnaker.filters.AuthenticatedRequestFilter
 import com.netflix.spinnaker.gate.retrofit.EurekaOkClient
 import com.netflix.spinnaker.gate.retrofit.Slf4jRetrofitLogger
@@ -39,11 +41,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.embedded.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Import
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory
-import org.springframework.session.data.redis.config.annotation.web.http.GateRedisHttpSessionConfiguration
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestTemplate
 import retrofit.Endpoint
@@ -55,7 +55,7 @@ import static retrofit.Endpoints.newFixedEndpoint
 @CompileStatic
 @Configuration
 @Slf4j
-@Import(GateRedisHttpSessionConfiguration)
+@EnableRedisHttpSession
 class GateConfig {
   @Value('${retrofit.logLevel:BASIC}')
   String retrofitLogLevel
@@ -84,6 +84,12 @@ class GateConfig {
   }
 
   @Bean
+  @ConditionalOnProperty("redis.configuration.secure")
+  ConfigureRedisAction configureRedisAction() {
+    return ConfigureRedisAction.NO_OP
+  }
+
+  @Bean
   ExecutorService executorService() {
     Executors.newCachedThreadPool()
   }
@@ -96,14 +102,6 @@ class GateConfig {
 
   @Autowired
   ServiceConfiguration serviceConfiguration
-
-  @Autowired
-  OkHttpClientConfiguration okHttpClientConfig
-
-  @Bean
-  OkHttpClient okHttpClient() {
-    okHttpClientConfig.create()
-  }
 
   @Bean
   OrcaService orcaService(OkHttpClient okHttpClient) {
