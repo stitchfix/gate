@@ -16,15 +16,17 @@
 
 package com.netflix.spinnaker.gate.security.saml
 
+import com.netflix.spinnaker.gate.services.PermissionService
+import groovy.util.logging.Slf4j
 import com.netflix.spinnaker.gate.security.AuthConfig
 import com.netflix.spinnaker.gate.security.SpinnakerAuthConfig
 import com.netflix.spinnaker.gate.security.rolesprovider.UserRolesProvider
 import com.netflix.spinnaker.gate.services.CredentialsService
 import com.netflix.spinnaker.gate.services.internal.ClouddriverService
 import com.netflix.spinnaker.security.User
-import groovy.util.logging.Slf4j
 import org.opensaml.saml2.core.Assertion
 import org.opensaml.saml2.core.Attribute
+import org.opensaml.xml.schema.XSAny
 import org.opensaml.xml.schema.XSString
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
@@ -34,6 +36,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
+import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter
 import org.springframework.security.config.annotation.web.servlet.configuration.EnableWebMvcSecurity
@@ -44,7 +47,6 @@ import org.springframework.security.saml.userdetails.SAMLUserDetailsService
 import org.springframework.security.web.authentication.RememberMeServices
 import org.springframework.security.web.authentication.rememberme.TokenBasedRememberMeServices
 import org.springframework.stereotype.Component
-
 import static org.springframework.security.extensions.saml2.config.SAMLConfigurer.saml
 
 @ConditionalOnExpression('${saml.enabled:false}')
@@ -57,6 +59,9 @@ class SamlSsoConfig extends WebSecurityConfigurerAdapter {
 
   @Autowired
   ServerProperties serverProperties
+
+  @Autowired
+  AuthConfig authConfig
 
   @Component
   @ConfigurationProperties("saml")
@@ -74,6 +79,7 @@ class SamlSsoConfig extends WebSecurityConfigurerAdapter {
     // The application identifier given to the IdP for this app.
     String issuerId
 
+    List<String> requiredRoles
     UserAttributeMapping userAttributeMapping = new UserAttributeMapping()
   }
 
@@ -99,7 +105,7 @@ class SamlSsoConfig extends WebSecurityConfigurerAdapter {
       .and()
       .authorizeRequests().antMatchers("/saml/**").permitAll()
 
-    AuthConfig.configure(http)
+    authConfig.configure(http)
 
     configurers?.each {
       it.configure(http)
@@ -146,6 +152,9 @@ class SamlSsoConfig extends WebSecurityConfigurerAdapter {
       @Autowired
       UserRolesProvider userRolesProvider
 
+      @Autowired
+      PermissionService permissionService
+
       @Override
       User loadUserBySAML(SAMLCredential credential) throws UsernameNotFoundException {
         def assertion = credential.authenticationAssertion
@@ -153,14 +162,23 @@ class SamlSsoConfig extends WebSecurityConfigurerAdapter {
         def userAttributeMapping = samlSecurityConfigProperties.userAttributeMapping
 
         def email = assertion.getSubject().nameID.value
+        String username = attributes[userAttributeMapping.username] ?: email
         def roles = extractRoles(email, attributes, userAttributeMapping)
+
+        if (samlSecurityConfigProperties.requiredRoles) {
+          if (!samlSecurityConfigProperties.requiredRoles.any { it in roles }) {
+            throw new BadCredentialsException("User $email does not have all roles $samlSecurityConfigProperties.requiredRoles")
+          }
+        }
+
+        permissionService.loginSAML(username, roles)
 
         new User(email: email,
           firstName: attributes[userAttributeMapping.firstName]?.get(0),
           lastName: attributes[userAttributeMapping.lastName]?.get(0),
           roles: roles,
           allowedAccounts: credentialsService.getAccountNames(roles),
-          username: attributes[userAttributeMapping.username] ?: email).asImmutable()
+          username: username).asImmutable()
       }
 
       Set<String> extractRoles(String email,
@@ -180,7 +198,15 @@ class SamlSsoConfig extends WebSecurityConfigurerAdapter {
         def attributes = [:]
         assertion.attributeStatements*.attributes.flatten().each { Attribute attribute ->
           def name = attribute.name
-          def values = attribute.attributeValues.collect { (it as XSString)?.value }
+          def values = attribute.attributeValues.findResults {
+            switch (it) {
+              case XSString:
+                return (it as XSString)?.value
+              case XSAny:
+                return (it as XSAny)?.textContent
+            }
+            return null
+          } ?: []
           attributes[name] = values
         }
 

@@ -37,6 +37,7 @@ interface ClouddriverService {
   @JsonIgnoreProperties(ignoreUnknown = true)
   static class Account {
     String name
+    String accountId
     String type
     Collection<String> requiredGroupMembership = []
   }
@@ -187,7 +188,8 @@ interface ClouddriverService {
                        @Query("q") String query,
                        @Query("region") String region,
                        @Query("account") String account,
-                       @Query("count") Integer count)
+                       @Query("count") Integer count,
+                       @QueryMap Map additionalFilters)
 
   @Headers("Accept: application/json")
   @GET("/search")

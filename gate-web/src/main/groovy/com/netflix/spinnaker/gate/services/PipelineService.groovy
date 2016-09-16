@@ -56,12 +56,19 @@ class PipelineService {
     front50Service.movePipelineConfig(moveCommand)
   }
 
-  Map trigger(String application, String pipelineName, Map trigger) {
-    def pipelineConfig = applicationService.getPipelineConfigForApplication(application, pipelineName)
+  Map trigger(String application, String pipelineNameOrId, Map trigger) {
+    def pipelineConfig = applicationService.getPipelineConfigForApplication(application, pipelineNameOrId)
     if (!pipelineConfig) {
       throw new PipelineConfigNotFoundException()
     }
     pipelineConfig.trigger = trigger
+    if (trigger.notifications) {
+      if (pipelineConfig.notifications) {
+        pipelineConfig.notifications = (List) pipelineConfig.notifications + (List) trigger.notifications
+      } else {
+        pipelineConfig.notifications = trigger.notifications;
+      }
+    }
     orcaService.startPipeline(pipelineConfig, trigger.user?.toString())
   }
 

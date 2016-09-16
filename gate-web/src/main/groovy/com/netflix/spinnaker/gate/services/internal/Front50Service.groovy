@@ -28,13 +28,13 @@ interface Front50Service {
   //
   // Application-related
   //
-  @GET('/default/applications')
+  @GET('/v2/applications')
   List<Map> getAllApplications()
 
-  @GET('/default/applications/name/{name}')
-  Map getApplication(@Path('name') String name)
+  @GET('/v2/applications/{applicationName}')
+  Map getApplication(@Path('applicationName') String applicationName)
 
-  @GET('/default/applications/{applicationName}/history')
+  @GET('/v2/applications/{applicationName}/history')
   List<Map> getApplicationHistory(@Path("applicationName") String applicationName, @Query("limit") int limit)
 
   //
@@ -100,6 +100,15 @@ interface Front50Service {
 
   @GET('/v2/projects/{projectId}')
   Map getProject(@Path('projectId') String projectId)
+
+  //
+  // Snapshot-related
+  //
+  @GET('/snapshots/{id}')
+  Map getCurrentSnapshot(@Path('id') String id)
+
+  @GET('/snapshots/{id}/history')
+  List<Map> getSnapshotHistory(@Path("id") String id, @Query("limit") int limit)
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   static class HalList {

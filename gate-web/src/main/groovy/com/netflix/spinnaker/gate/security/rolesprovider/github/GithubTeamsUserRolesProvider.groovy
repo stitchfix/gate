@@ -60,7 +60,7 @@ class GithubTeamsUserRolesProvider implements UserRolesProvider, InitializingBea
         log.error("Could not find the server ${master.baseUrl}", e)
         return []
       } else if (e.response.status == 404) {
-        log.error("Could not find the GitHub organization ${gitHubProperties.organization}", e)
+        log.error("User ${userName} is not a member of GitHub organization ${gitHubProperties.organization}")
         return []
       } else if (e.response.status == 401) {
         log.error("Cannot get GitHub organization ${gitHubProperties.organization} informations: Not authorized.", e)
@@ -78,7 +78,7 @@ class GithubTeamsUserRolesProvider implements UserRolesProvider, InitializingBea
     // Get teams of the current user
     List<GitHubMaster.Team> teams
     try {
-      teams = master.gitHubClient.getOrgTeams(gitHubProperties.organization)
+      teams = master.gitHubClient.getOrgTeams(gitHubProperties.organization, gitHubProperties.paginationValue)
 
     } catch (RetrofitError e) {
       log.error("RetrofitError ${e.response.status} ${e.response.reason} ", e)

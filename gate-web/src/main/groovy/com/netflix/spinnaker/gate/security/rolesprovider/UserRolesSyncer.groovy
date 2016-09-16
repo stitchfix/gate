@@ -19,8 +19,15 @@ package com.netflix.spinnaker.gate.security.rolesprovider
 import com.netflix.spinnaker.security.User
 import groovy.util.logging.Slf4j
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Configuration
+import org.springframework.dao.DataAccessException
+import org.springframework.data.redis.connection.RedisConnection
+import org.springframework.data.redis.core.Cursor
+import org.springframework.data.redis.core.RedisCallback
 import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.data.redis.core.ScanOptions
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.core.context.SecurityContext
 import org.springframework.session.ExpiringSession
@@ -29,6 +36,7 @@ import org.springframework.session.SessionRepository
 
 @Slf4j
 @Configuration
+@ConditionalOnExpression('!${services.fiat.enabled:false}')
 class UserRolesSyncer {
   @Autowired
   RedisTemplate sessionRedisTemplate
@@ -40,14 +48,27 @@ class UserRolesSyncer {
   UserRolesProvider userRolesProvider
 
   /**
-   * Check all sessions to see whether the session user's groups have changed. If so, delete the session.
+   * Check all sessions to see whether the session user's roles have changed. If so, delete the session.
    * Repeat every 10 minutes, after an initial delay.
    */
   @Scheduled(initialDelay = 10000L, fixedRate = 600000L)
-  public void syncUserGroups() {
-    Map<String, String> emailSessionIdMap = [:]
-    Map<String, Collection<String>> emailCurrentGroupsMap = [:]
-    Set<String> sessionKeys = sessionRedisTemplate.keys('*session:sessions*')
+  public void sync() {
+    Map<String, String> usernameSessionIdMap = [:]
+    Map<String, Collection<String>> usernameCurrentGroupsMap = [:]
+    Set<String> sessionKeys = sessionRedisTemplate.execute(new RedisCallback<Set<String>>() {
+      @Override
+      public Set<String> doInRedis(RedisConnection connection) throws DataAccessException {
+        def results = new HashSet<String>()
+        def options = ScanOptions.scanOptions().match('*session:sessions*').count(1000).build()
+        connection.scan(options).withCloseable { Cursor<byte[]> sessions ->
+          for (byte[] sessionRaw : sessions) {
+            String session = sessionRedisTemplate.getStringSerializer().deserialize(sessionRaw)
+            results.add(session)
+          }
+        }
+        return results
+      }
+    })
 
     Set<String> sessionIds = sessionKeys.collect { String key ->
       def toks = key.split(":")
@@ -60,20 +81,21 @@ class UserRolesSyncer {
         def secCtx = session.getAttribute("SPRING_SECURITY_CONTEXT") as SecurityContext
         def principal = secCtx?.authentication?.principal
         if (principal && principal instanceof User) {
-          emailSessionIdMap[principal.email] = id
-          emailCurrentGroupsMap[principal.email] = principal.roles
+          usernameSessionIdMap[principal.username] = id
+          usernameCurrentGroupsMap[principal.username] = principal.roles
         }
       }
     }
 
-    def newGroupsMap = userRolesProvider.multiLoadRoles(emailSessionIdMap.keySet())
+    def newGroupsMap = userRolesProvider.multiLoadRoles(usernameSessionIdMap.keySet())
     def sessionIdsToDelete = []
-    newGroupsMap.each { String email, Collection<String> newGroups ->
+    newGroupsMap.each { String username, Collection<String> newGroups ->
       // cast for equals check to work
       List<String> newList = newGroups as List
-      List<String> oldList = emailCurrentGroupsMap[email] as List
+      List<String> oldList = usernameCurrentGroupsMap[username] as List
       if (oldList != newList) {
-        sessionIdsToDelete.add(emailSessionIdMap[email])
+        sessionIdsToDelete.add(usernameSessionIdMap[username])
+        log.warn("Removing session for ${username} (oldList: ${oldList}, newList: ${newList})")
       }
     }
 

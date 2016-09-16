@@ -17,11 +17,15 @@
 package com.netflix.spinnaker.gate.controllers
 
 import com.netflix.spinnaker.gate.security.SpinnakerUser
+import com.netflix.spinnaker.gate.security.rolesprovider.UserRolesSyncer
+import com.netflix.spinnaker.gate.services.PermissionService
 import com.netflix.spinnaker.security.User
 import groovy.util.logging.Slf4j
 import org.apache.commons.lang.exception.ExceptionUtils
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestMethod
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
@@ -40,9 +44,15 @@ class AuthController {
       "Louis, I think this is a start of a beautiful friendship!",
       "Roads? Where we're going we don't need roads!",
       "Say hello to my little friend!",
-      "I wish we could chat longer, but I'm having and old friend for dinner. Bye!",
+      "I wish we could chat longer, but I'm having an old friend for dinner. Bye!",
       "Hodor.",
   ]
+
+  @Autowired
+  PermissionService permissionService
+
+  @Autowired(required = false)
+  UserRolesSyncer userRolesSyncer
 
   @Value('${services.deck.baseUrl}')
   URL deckBaseUrl
@@ -57,6 +67,19 @@ class AuthController {
   @RequestMapping("/loggedOut")
   String loggedOut() {
     return LOGOUT_MESSAGES[r.nextInt(LOGOUT_MESSAGES.size()+1)]
+  }
+
+  /**
+   * On-demand endpoint to sync the user roles, in case
+   * waiting for the periodic refresh won't work.
+   */
+  @RequestMapping(value = "/roles/sync", method = RequestMethod.POST)
+  void sync() {
+    if (userRolesSyncer) {
+      userRolesSyncer.sync()
+    } else {
+      permissionService.sync()
+    }
   }
 
   @RequestMapping("/redirect")
@@ -75,6 +98,9 @@ class AuthController {
       return false
     }
 
+    log.info "validDeckRedirect($to)..."
+    log.info "      toURL=[host:$toURL.host, port:$toURL.port]"
+    log.info "deckBaseUrl=[host:$deckBaseUrl.host, port:$deckBaseUrl.port]"
     return toURL.host == deckBaseUrl.host &&
         toURL.port == deckBaseUrl.port
   }
